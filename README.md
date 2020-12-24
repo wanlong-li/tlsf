@@ -1,7 +1,7 @@
 # TLSF
 ## Forward a local TCP connection to a remote TLS-enabled TCP connection
 ### Motivation
-Unwrap a TLS/mTLS protected service to plain TCP connection, to enable interaction with tools which don't have TLS capability, such as netcat.
+Remove the TLS layer of a TCP connection, to allow interaction with tools which don't have TLS/mTLS capability, such as netcat.
 ### Usage
 ```
 $ tlsf -h
