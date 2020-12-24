@@ -1,4 +1,7 @@
+# TLSF
 ## Forward a local TCP connection to a remote TLS-enabled TCP connection
+### Motivation
+Unwrap a TLS/mTLS protected service to plain TCP connection, to enable interaction with tools which don't have TLS capability, such as netcat.
 ### Usage
 ```
 $ tlsf -h
@@ -10,6 +13,22 @@ Usage: tlsf [-no-verify] [-cacert ca_cert] [-cert client_cert] [-key client_key]
 ```
 ### Examples
 ```
-$ tlsf google.com:443 localhost:8001
-[local] listening localhost:8001
+# simple
+$ tlsf github.com:443 localhost:8000
+$ curl localhost:8000 -H 'Host: github.com'
+
+# skip verifying server cert
+$ tlsf -no-verify example.com:8443 localhost:8000
+
+# client cert authentication required (mTLS)
+$ tlsf -cert cert.pem -key key.pem example.com:8443 localhost:8000
 ```
+
+### Build
+```
+git clone https://github.com/wanlong-li/tlsf.git
+
+go build -o dist/tlsf tlsf/cmd/tlsf/main.go
+
+```
+
