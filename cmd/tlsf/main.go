@@ -7,11 +7,22 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"os"
 )
 
+var (
+	infoLogger  *log.Logger
+	warnLogger  *log.Logger
+	errorLogger *log.Logger
+)
+
 func main() {
+	infoLogger = log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime)
+	warnLogger = log.New(os.Stdout, "WARN: ", log.Ldate|log.Ltime)
+	errorLogger = log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime)
+
 	pNoVerifyServerCert := flag.Bool("no-verify", false, "skip verifying remote server cert")
 	pCACert := flag.String("ca-cert", "", "CA certificate")
 	pClientCert := flag.String("cert", "", "client certificate")
@@ -35,7 +46,7 @@ func main() {
 	bindAddr := addresses[1]
 	tlsConfig, err := clientTLSConfig(*pNoVerifyServerCert, *pClientCert, *pClientKey, *pCACert)
 	if err != nil {
-		fmt.Println(err)
+		errorLogger.Println(err)
 		os.Exit(-1)
 	}
 
@@ -56,7 +67,7 @@ func clientTLSConfig(skipVerifyServerCert bool, clientCert, clientKey, clientCAC
 
 		caCert, err := ioutil.ReadFile(clientCACert)
 		if err != nil {
-			fmt.Printf("CA certificate not loaded: %s\n", err)
+			warnLogger.Printf("CA certificate not loaded: %s\n", err)
 		} else {
 			caCertPool := x509.NewCertPool()
 			caCertPool.AppendCertsFromPEM(caCert)
@@ -70,39 +81,39 @@ func listenAndDial(remoteAddr, localAddr string, tlsConfig *tls.Config) {
 	listener, err := net.Listen("tcp", localAddr)
 
 	if err != nil {
-		fmt.Printf("[local] failed to listen: %s\n", err)
+		errorLogger.Printf("[local] failed to listen: %s\n", err)
 		return
 	}
 
-	fmt.Printf("[local] listening %s\n", localAddr)
+	infoLogger.Printf("[local] listening %s\n", localAddr)
 
 	var connectionID uint64
 	for {
-		acceptLocalAndDialRemote(connectionID, listener, remoteAddr, localAddr, tlsConfig)
 		connectionID++
+		lConn, err := listener.Accept()
+		if err != nil {
+			errorLogger.Printf("[local] failed to accept: %s\n", err)
+			return
+		}
+
+		go forwardConnection(connectionID, lConn, remoteAddr, localAddr, tlsConfig)
 	}
 }
 
-func acceptLocalAndDialRemote(connectionID uint64, listener net.Listener, remoteAddr, localAddr string, tlsConfig *tls.Config) {
-	lConn, err := listener.Accept()
-	if err != nil {
-		fmt.Printf("[local] failed to accept: %s\n", err)
-		return
-	}
-
+func forwardConnection(connectionID uint64, lConn net.Conn, remoteAddr, localAddr string, tlsConfig *tls.Config) {
 	defer lConn.Close()
 
 	rConn, err := dialRemote(remoteAddr, tlsConfig)
 	if err != nil {
-		fmt.Printf("[remote] failed to dial: %s\n", err)
+		errorLogger.Printf("[remote] failed to dial: %s\n", err)
 		return
 	}
 
 	defer rConn.Close()
 
-	fmt.Printf("[local] conn %d started\n", connectionID)
+	infoLogger.Printf("[local] conn %d started\n", connectionID)
 	defer func() {
-		fmt.Printf("[local] conn %d ended\n", connectionID)
+		infoLogger.Printf("[local] conn %d ended\n", connectionID)
 	}()
 
 	go func() {
@@ -126,12 +137,12 @@ func pipe(srcName, destName string, r io.ReadCloser, w io.WriteCloser) {
 		byteWritten, err := io.Copy(w, r)
 		if err != nil {
 			if err != io.EOF {
-				fmt.Printf("[%s->%s] failed to copy: %s\n", srcName, destName, err)
+				infoLogger.Printf("[%s->%s] failed to copy: %s\n", srcName, destName, err)
 			}
 			return
 		}
 		if byteWritten == 0 {
-			fmt.Printf("[%s->%s] 0 byte\n", srcName, destName)
+			infoLogger.Printf("[%s->%s] 0 byte\n", srcName, destName)
 			return
 		}
 	}
